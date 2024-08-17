@@ -1,100 +1,158 @@
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.backends import default_backend
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  # to handle Cross-Origin Resource Sharing (CORS)
+import uvicorn                                      # ASGI server to run FastAPI application
+import httpx
 import json
+import os
+from dotenv import load_dotenv
 
-# Generate RSA key pair (This would normally be done separately and keys stored securely)
-def generate_keys():
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-        backend=default_backend()
-    )
-    public_key = private_key.public_key()
+### Global Variable ---------------------------------------------------------------------
+load_dotenv()                                   # load environment variables from: .env
+CLIENT_ID = os.environ.get("CLIENT_ID")         # Retrieve dri env
+CLIENT_SECRET = os.environ.get("CLIENT_SECRET") # Retrieve dri env
 
-    # Serialize keys for storage or sharing
-    private_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
-    )
 
-    public_pem = public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    )
+### 2 FastAPI and CORS initialization -------------------------------------
+app = FastAPI()                                     # initializes the FastAPI application
 
-    return private_pem, public_pem
+origins = [                                         # list allowed origins to make requests to API
+    "http://localhost",                        
+    "http://127.0.0.1:5173",                        # INI NANTI GANTI SESUAI PORT JS MASING MASING
+]
 
-# Encrypt data using public key
-def encrypt_data(public_key_pem, data):
-    public_key = serialization.load_pem_public_key(
-        public_key_pem,
-        backend=default_backend()
-    )
+app.add_middleware(                                 # CORS Middleware: handle requestt from specified origins
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    encrypted = public_key.encrypt(
-        data.encode('utf-8'),
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
+print('llm')                                    # to Ping
 
-    return encrypted
+API_URL = 'https://service-testnet.maschain.com'
 
-# Decrypt data using private key
-def decrypt_data(private_key_pem, encrypted_data):
-    private_key = serialization.load_pem_private_key(
-        private_key_pem,  # Load the private key
-        password=None,    # Assuming the private key is not encrypted with a password
-        backend=default_backend()
-    )
-
-    decrypted = private_key.decrypt(
-        encrypted_data,   # The encrypted data to be decrypted
-        padding.OAEP(     # The padding scheme used during encryption
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-
-    return decrypted.decode('utf-8')  # Convert the decrypted bytes back to a string
-
-# Example patient data to be encrypted
-patient_data = {
-    "name": "John Doe",
-    "dob": "1990-01-01",
-    "condition": "Hypertension",
-    "medications": ["Lisinopril", "Amlodipine"],
-    "doctor": "Dr. Smith"
+basic_headers = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET
 }
 
-# Step 1: Generate RSA Keys (Private and Public)
-print("Generating RSA keys...")
-private_key_pem, public_key_pem = generate_keys()
+post_headers = {
+    "client_id": CLIENT_ID,
+    "client_secret": CLIENT_SECRET,
+    "content-type": 'application/json'
+}
 
-# Print complete keys
-print("\nPrivate Key:\n", private_key_pem.decode('utf-8'))
-print("\nPublic Key:\n", public_key_pem.decode('utf-8'))
+### ping -----------------------------------------------------------------------------
+@app.get("/")
+def root():
+    return {"data": "llm1!"}
 
-# Step 2: Encrypt the patient data using the public key
-print("\nEncrypting patient data...")
-try:
-    encrypted_data = encrypt_data(public_key_pem, json.dumps(patient_data))
-    print("\nEncrypted Data (hex):", encrypted_data.hex(), "\n")  # Show the full hex data
-except Exception as e:
-    print("Encryption failed:", str(e))
+### AUDIT TRAIL ----------------------------------------------------------------------
 
-# Step 3: Decrypt the data using the private key to retrieve the original data
-print("Decrypting data...")
-try:
-    decrypted_data = decrypt_data(private_key_pem, encrypted_data)
-    print("\nDecrypted Data (formatted):")
-    decrypted_json = json.loads(decrypted_data)
-    for key, value in decrypted_json.items():
-        print(f'"{key}": {json.dumps(value)}')
-except Exception as e:
-    print("Decryption failed:", str(e))
+
+### Create new Account by Create Audit Trail 
+@app.post('/reg')
+async def create_acc(
+    password_data: dict
+):
+    url = API_URL + '/api/audit/audit'                         # Create Audit Trail
+    
+    async with httpx.AsyncClient() as client:
+        password_data = {
+            "wallet_address": password_data["wallet_address"],      # Req
+            "contract_address": password_data["contract_address"],  # Req
+            "metadata": {                                           # Req
+                "password": password_data["password"],                         #
+                "privatekey": "",                                   # Tar di ubah marco
+            },
+            "callback_url": password_data["callback_url"],          # Req
+            "category_id": [9]                                  # Not Req, 8=mr 9= acc, dtype: array
+        }
+        response = await client.post(url, headers=basic_headers, json=password_data)
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to log password update")
+        
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            return {"error": "Failed to parse JSON response", "content": response.text}
+
+### marco: Create Medical Record by Create Audit Trail 
+@app.post('/mr/create')
+async def create_mr(request_data: dict):
+    url = API_URL + '/api/audit/audit'
+    async with httpx.AsyncClient() as client:
+        request_data = {
+            "metadata": json.dumps(request_data),
+            "contract_address": "0x922f65BB86BE4a2153e900153204fD6eBA725638",
+            "wallet_address": "0x7687C7Fda5357d86DfEe7ea4bdc373D128aabFE2",
+            "callback_url": "https://postman-echo.com/post?"
+        }
+       
+        response = await client.post(url, headers=post_headers, json=request_data)
+        
+        if response.status_code != 200:                 # Check status code
+            raise HTTPException(status_code=response.status_code, detail="External API request failed")
+       
+        if not response.content:                        # Check if content is empty
+            return {"message": "External API returned an empty response"}
+       
+        
+        try:                                            # Try to parse JSON
+            return response.json()
+        except json.JSONDecodeError:                    # If JSON parsing fails, return the raw text content
+            return {"error": "Failed to parse JSON", "content": response.text}
+
+
+### Wallet Management ----------------------------------------------------------------------
+
+### Create new User Wallet by Create User Wallet 
+@app.post('/wallet/create')
+async def create_wallet_user(
+    wallet_data: dict
+):
+    url = API_URL + '/api/wallet/create-user'  # Endpoint to create a wallet user
+    
+    async with httpx.AsyncClient() as client:
+        payload = {
+            "name": wallet_data["name"],  # Required: User's name
+            "email": wallet_data["email"],  # Required: User's email
+            "ic": wallet_data["ic"]  # Required: User's identification code
+        }
+        response = await client.post(url, headers=basic_headers, data=payload)
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to create wallet user")
+        
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            return {"error": "Failed to parse JSON response", "content": response.text}
+
+
+### Create new organization wallet by Create Organisation Wallet 
+@app.post('/wallet/wallet')
+async def create_wallet_org(
+    wallet_data: dict
+):
+    url = API_URL + '/api/wallet/wallet'  # Endpoint to create a wallet user
+    
+    async with httpx.AsyncClient() as client:
+        payload = {
+            "name": wallet_data["name"]  # Required: User's name
+        }
+        response = await client.post(url, headers=basic_headers, data=payload)
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to create wallet user")
+        
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            return {"error": "Failed to parse JSON response", "content": response.text}
+
+### 5 Run the Server ------------------------------------------------------------------------------
+if __name__ == "__main__":
+    uvicorn.run(app, host='localhost', port=8001)
