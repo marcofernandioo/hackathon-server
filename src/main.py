@@ -1,6 +1,12 @@
 from fastapi import FastAPI, HTTPException
 import httpx
 import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+CLIENT_ID = os.environ.get("CLIENT_ID")
+CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 
 app = FastAPI()
 
@@ -8,19 +14,19 @@ print('llm')
 
 API_URL = 'https://service-testnet.maschain.com'
 basic_headers = {
-        "client_id": '13aab0e5a2d89c1e68d8e9f581f54bd255e0eea3e7e027c43b5b3faf34e40b82',
-        "client_secret": 'sk_4c7fe1e868e87458867f2edcd3461266392ff960c3d9dde5639a563edb2f0c84'
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET
 }
 
 post_headers = {
-    "client_id": '13aab0e5a2d89c1e68d8e9f581f54bd255e0eea3e7e027c43b5b3faf34e40b82',
-    "client_secret": 'sk_4c7fe1e868e87458867f2edcd3461266392ff960c3d9dde5639a563edb2f0c84',
+    "client_id": CLIENT_ID,
+    "client_secret": CLIENT_SECRET,
     "content-type": 'application/json'
 }
 
 @app.get("/")
 def root():
-    return {"data": "llm123!!!"}
+    return {"data": "llm1!"}
 
 @app.get('/mr/all')
 async def get_mr():

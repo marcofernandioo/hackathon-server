@@ -10,3 +10,4 @@ passlib[bcrypt]
 python-multipart
 pydantic-settings
 httpx
+python-dotenv
