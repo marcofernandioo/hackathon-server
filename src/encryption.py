@@ -167,6 +167,7 @@ async def create_mr(request_data: dict):
         except json.JSONDecodeError:
             return {"error": "Failed to parse JSON", "content": response.text}
 
+
 ### Run the Server ---------------------------------------------------------
 if __name__ == "__main__":
     uvicorn.run(app, host='localhost', port=8001)

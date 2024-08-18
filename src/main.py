@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware  # to handle Cross-Origin Resource Sharing (CORS)
 import uvicorn                                      # ASGI server to run FastAPI application
 import httpx
@@ -34,13 +34,11 @@ print('llm')                                    # to Ping
 API_URL = 'https://service-testnet.maschain.com'
 
 wallet_db = [
-    {"wallet_address": "0x922f65BB86BE4a2153e900153204fD6eBA725638", "password": "password123"},
-    {"wallet_address": "0x7687C7Fda5357d86DfEe7ea4bdc373D128aabFE2", "password": "qwerty456"},
-    {"wallet_address": "0x3E5a6f7bcb7Bc345F62BbCfB75Fe81bD784F23D8", "password": "letmein789"},
-    {"wallet_address": "0x4Fa6d5c65A64D4F7C9f5C8A7F6Bf1bC654E8b0AA", "password": "welcome101"},
-    {"wallet_address": "0x7Bd8D6E9a4f7E3C6D1A2B7C6E5E9D6C1F6C7B8A9", "password": "passw0rd321"},
+    {"wallet_address": "0x71c9751A2b199864bd486b72a342373Df1eFb5C9", "password": "owen123"}, ## owen
+    {"wallet_address": "0x9975Cb544e12440e45F1ebbe8809221E486a0937", "password": "divaldo123"}, ## divaldo
+    {"wallet_address": "0x3f4615Fdf53Bc923d84Fe098D7Aa7735f45aAa63", "password": "marco123"}, ## marco
+    {"wallet_address": "0xC95bd91f1744704306c2eeB60d62fE9105d31fAc", "password": "stanley123"}, ## stanley
 ]
-
 basic_headers = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET
@@ -51,6 +49,9 @@ post_headers = {
     "client_secret": CLIENT_SECRET,
     "content-type": 'application/json'
 }
+
+temp_mr = {}
+temp_mr_view = {}
 
 ### ping -----------------------------------------------------------------------------
 @app.get("/")
@@ -88,24 +89,41 @@ async def create_acc(
         except json.JSONDecodeError:
             return {"error": "Failed to parse JSON response", "content": response.text}
 
+# Called by the MS to create the MR.
+@app.post("/mr/store")
+async def store_endpoint(request: dict):
+    global temp_mr
+    temp_mr = json.dumps(request);
+    return {"message": "Request body stored successfully"}
+
+# Get one MR, for Patient to access.
+@app.get('/mr/one')
+async def mr_global():
+    global temp_mr
+    return temp_mr
+
 ### marco: Create Medical Record by Create Audit Trail 
 @app.post('/mr/create')
 async def create_mr(request_data: dict):
     # Generate RSA keys
-    private_key_pem, public_key_pem = generate_rsa_keys()
+    # private_key_pem, public_key_pem = generate_rsa_keys()
 
-    # Encrypt data with public key
-    encrypted_data = encrypt_with_public_key(public_key_pem, json.dumps(request_data))
+    # # Encrypt data with public key
+    # encrypted_data = encrypt_with_public_key(public_key_pem, json.dumps(request_data))
 
     url = API_URL + '/api/audit/audit'
+    global temp_mr
+    
     
     async with httpx.AsyncClient() as client:
         request_data = {
-            "metadata": request_data,
+            "metadata": temp_mr,
             "contract_address": "0x922f65BB86BE4a2153e900153204fD6eBA725638",
             "wallet_address": "0x7687C7Fda5357d86DfEe7ea4bdc373D128aabFE2",
             "callback_url": "https://postman-echo.com/post?"
         }
+        
+        # return request_data
                
         response = await client.post(url, headers=post_headers, json=request_data)
         
@@ -117,6 +135,7 @@ async def create_mr(request_data: dict):
        
         
         try:                                            # Try to parse JSON
+            temp_mr = {}
             return response.json()
         except json.JSONDecodeError:                    # If JSON parsing fails, return the raw text content
             return {"error": "Failed to parse JSON", "content": response.text}
@@ -203,20 +222,36 @@ async def login(wallet_data: dict):
        
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail="Failed to retrieve wallet from blockchain")
+        
+        wallet_info = response.json()
    
     # if wallet address is found
     # Step 2: Check if the wallet address and password match any of the wallet database
     for data in wallet_db:
         if data["wallet_address"] == wallet_address and data["password"] == input_password:
-            return {"message": "Login successful"}
+            return {"message": wallet_info}
  
     return {"message": "Invalid wallet address or password"}
  
  
-
 @app.get('/statistics')
 def get_stat():
     return stat
+
+def store_request_body(body: dict, file_path: str = "request_body.txt"):
+    with open(file_path, "w") as file:
+        json.dump(body, file)
+
+def clear_request_body(file_path: str = "request_body.txt"):
+    with open(file_path, "w") as file:
+        file.write("")
+
+# This is the actual create MR stored onchain.
+@app.delete("/delete")
+async def delete_endpoint():
+    global temp_mr
+    temp_mr = {}
+    return {"message": "Request body cleared successfully"}
 
 
 ### 5 Run the Server ------------------------------------------------------------------------------
