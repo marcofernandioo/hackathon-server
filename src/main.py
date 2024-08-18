@@ -5,6 +5,8 @@ import httpx
 import json
 import os
 from dotenv import load_dotenv
+from src.util import generate_rsa_keys, encrypt_with_public_key, decrypt_with_private_key, hash_password, encrypt_private_key, decrypt_private_key
+from src.stat_data import stat
 
 ### Global Variable ---------------------------------------------------------------------
 load_dotenv()                                   # load environment variables from: .env
@@ -16,21 +18,28 @@ CLIENT_SECRET = os.environ.get("CLIENT_SECRET") # Retrieve dri env
 app = FastAPI()                                     # initializes the FastAPI application
 
 origins = [                                         # list allowed origins to make requests to API
-    "http://localhost",                        
-    "http://127.0.0.1:5173",                        # INI NANTI GANTI SESUAI PORT JS MASING MASING
+    "http://localhost:5175",                        
+    "http://127.0.0.1:5175",                        # INI NANTI GANTI SESUAI PORT JS MASING MASING
 ]
 
-app.add_middleware(                                 # CORS Middleware: handle requestt from specified origins
+app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],  # Allows all origins
+    # allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
 )
-
 print('llm')                                    # to Ping
 
 API_URL = 'https://service-testnet.maschain.com'
+
+wallet_db = [
+    {"wallet_address": "0x922f65BB86BE4a2153e900153204fD6eBA725638", "password": "password123"},
+    {"wallet_address": "0x7687C7Fda5357d86DfEe7ea4bdc373D128aabFE2", "password": "qwerty456"},
+    {"wallet_address": "0x3E5a6f7bcb7Bc345F62BbCfB75Fe81bD784F23D8", "password": "letmein789"},
+    {"wallet_address": "0x4Fa6d5c65A64D4F7C9f5C8A7F6Bf1bC654E8b0AA", "password": "welcome101"},
+    {"wallet_address": "0x7Bd8D6E9a4f7E3C6D1A2B7C6E5E9D6C1F6C7B8A9", "password": "passw0rd321"},
+]
 
 basic_headers = {
         "client_id": CLIENT_ID,
@@ -46,7 +55,7 @@ post_headers = {
 ### ping -----------------------------------------------------------------------------
 @app.get("/")
 def root():
-    return {"data": "llm1!"}
+    return {"data": "llm1!!!!"}
 
 ### AUDIT TRAIL ----------------------------------------------------------------------
 
@@ -82,15 +91,22 @@ async def create_acc(
 ### marco: Create Medical Record by Create Audit Trail 
 @app.post('/mr/create')
 async def create_mr(request_data: dict):
+    # Generate RSA keys
+    private_key_pem, public_key_pem = generate_rsa_keys()
+
+    # Encrypt data with public key
+    encrypted_data = encrypt_with_public_key(public_key_pem, json.dumps(request_data))
+
     url = API_URL + '/api/audit/audit'
+    
     async with httpx.AsyncClient() as client:
         request_data = {
-            "metadata": json.dumps(request_data),
+            "metadata": request_data,
             "contract_address": "0x922f65BB86BE4a2153e900153204fD6eBA725638",
             "wallet_address": "0x7687C7Fda5357d86DfEe7ea4bdc373D128aabFE2",
             "callback_url": "https://postman-echo.com/post?"
         }
-       
+               
         response = await client.post(url, headers=post_headers, json=request_data)
         
         if response.status_code != 200:                 # Check status code
@@ -153,6 +169,57 @@ async def create_wallet_org(
         except json.JSONDecodeError:
             return {"error": "Failed to parse JSON response", "content": response.text}
 
+### Check wallet to login by Get Wallet by address      ### Maybe not used
+@app.get('/wallet/get/{address}')                       #### this to login only by wallet address
+async def get_wallet_by_address(address: str):
+    url = f"{API_URL}/api/wallet/wallet/{address}"
+   
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=basic_headers)
+       
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to retrieve wallet")
+       
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            return {"error": "Failed to parse JSON response", "content": response.text}
+ 
+
+### 19 ---------------------------------
+### Login by Get Wallet by address & Database
+
+ 
+@app.post('/wallet/login')
+async def login(wallet_data: dict):
+    wallet_address = wallet_data.get("wallet_address")
+    input_password = wallet_data.get("password")
+ 
+    # Step 1: Check if the wallet address is registered on the blockchain
+    url = f"{API_URL}/api/wallet/wallet/{wallet_address}" # call: Get Wallet by address (endpoint)
+   
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=basic_headers)
+       
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to retrieve wallet from blockchain")
+   
+    # if wallet address is found
+    # Step 2: Check if the wallet address and password match any of the wallet database
+    for data in wallet_db:
+        if data["wallet_address"] == wallet_address and data["password"] == input_password:
+            return {"message": "Login successful"}
+ 
+    return {"message": "Invalid wallet address or password"}
+ 
+ 
+
+@app.get('/statistics')
+def get_stat():
+    return stat
+
+
 ### 5 Run the Server ------------------------------------------------------------------------------
 if __name__ == "__main__":
-    uvicorn.run(app, host='localhost', port=8001)
+    # uvicorn.run(app, host='localhost', port=8001)
+    print("running")
